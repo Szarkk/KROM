@@ -1,6 +1,0 @@
-Krom Run Summary:
-
-Post-Run Benchmarks:
-CPU Usage: 26.2%
-Memory Usage: 81.9%
-Disk Usage (C:): 91.3%
