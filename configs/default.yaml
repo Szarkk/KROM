@@ -1,0 +1,177 @@
+# Krom Default Configuration
+# Edit toggles, paths, or add custom AV tools as needed.
+# All paths are relative to project root unless absolute.
+
+paths:
+  backups: "./backups"  # Directory for stage backups (e.g., registry exports)
+  logs: "./logs"       # Runtime logs; auto-created if missing
+  temp_dir: "./temp"   # General temp files (shared across stages)
+
+stages:
+  prep:
+    enabled: true
+    suspicious_processes:  # Now list of dicts for path/multi checks
+      - name: "winlogon.exe"
+        legit_path: "%SystemRoot%\\System32"
+        allow_multi: false  # Kill if >1 or wrong path
+        wildcard: false
+      - name: "jusched.exe"
+        legit_path: null  # Always kill if matches (no path check)
+        allow_multi: true
+        wildcard: false
+      - name: "cdproxyserv.exe"
+        legit_path: null
+        allow_multi: true
+        wildcard: false
+      - name: "runtimebroker.exe"
+        legit_path: "%SystemRoot%\\System32"
+        allow_multi: true  # Legit multiples OK
+        wildcard: false
+      - name: "secomnservice.exe"
+        legit_path: null
+        allow_multi: true
+        wildcard: false
+      - name: "com surrogate.exe"
+        legit_path: "%SystemRoot%\\System32"
+        allow_multi: true
+        wildcard: false
+      - name: "agenttesla.exe"
+        legit_path: null
+        allow_multi: true
+        wildcard: false
+      - name: "qakbot.exe"
+        legit_path: null
+        allow_multi: true
+        wildcard: false
+      - name: "trickbot.exe"
+        legit_path: null
+        allow_multi: true
+        wildcard: false
+      - name: "ransomware_helper.*"
+        legit_path: null
+        allow_multi: true
+        wildcard: true  # Enable wildcard matching
+  temp_clean:
+    enabled: true
+    use_native_commands: true  # NEW: Enable fast native cmd bulk deletes (Tron-like speed); set false for per-file walk
+  de_bloat:
+    enabled: true
+  disinfect:
+    enabled: true
+    av_tools:
+      - name: ClamAV
+        download_url: "https://www.clamav.net/downloads/production/clamav-1.4.3.win.x64.exe"  # Latest stable LTS as of Sept 2025
+        install_cmd: "--mode unattended --install-location C:\\ClamAV"
+        update_cmd: "C:\\ClamAV\\freshclam.exe"
+        scan_cmd: "C:\\ClamAV\\clamscan.exe -r C:\\ --bell -i --remove"
+        uninstall_cmd: "C:\\ClamAV\\uninstall.exe /S"
+        detect_cmd: "dir C:\\ClamAV /b >nul 2>&1 && echo installed"
+        keep_installed: false  # Per-tool: Skip uninstall if pre-installed
+      - name: Malwarebytes
+        download_url: "https://downloads.malwarebytes.com/file/mwb-download/mwb-free-latest.exe"
+        install_cmd: "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES"
+        update_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe" /update'
+        scan_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe" /scan -full -terminate'
+        uninstall_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\unins000.exe" /VERYSILENT /NORESTART'
+        detect_cmd: "wmic product get name | findstr Malwarebytes"
+        keep_installed: false  # Per-tool: Skip uninstall if pre-installed
+    max_concurrent: 1
+    temp_dir: "./temp_av_downloads"  # Override general temp_dir if needed
+    keep_installed: false  # Global default; per-tool overrides this
+    auto_update: true      # Update signatures/databases
+  repair:
+    enabled: true
+    drives_to_check: ['C:']
+    reg_tweaks:
+      - ['SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', 'LocalAccountTokenFilterPolicy', 'DWORD', 1]
+  patch:
+    enabled: true
+  optimize:
+    enabled: true
+  wrap_up:
+    enabled: true
+  custom:
+    enabled: false  # Plugins only if enabled
+
+enhancements:
+  browser_cleanup:
+    enabled: false
+    browsers: ['chrome', 'firefox', 'edge', 'opera']  # Target browsers
+    clean_types: ['cache', 'history', 'cookies', 'downloads', 'extensions']  # What to clean; subset via CLI
+    safe_extensions: []  # Whitelist extension IDs/names (e.g., 'cjpalhdlnbpafiamejdnhcphjbkeiagm' for uBlock)
+    backup: true  # Backup before clean (tie to global no_backup)
+  privacy_scrub:
+    enabled: false
+    hosts_blocks: []  # List of domains to block (e.g., 'telemetry.microsoft.com', 'ads.google.com'); load from file or hardcoded
+    browsers: ['chrome', 'firefox', 'edge', 'opera']  # Target browsers for cleanup
+    clear_dns: true  # Run ipconfig /flushdns
+    disable_telemetry: true  # Disable Windows telemetry services/tasks
+    hosts_file: "C:\\Windows\\System32\\drivers\\etc\\hosts"  # Path to hosts file (override via CLI)
+    online_update: false  # If true and not offline, fetch latest hosts from sources (e.g., StevenBlack hosts)
+  uninstall_residue:
+    enabled: false
+    scan_paths:  # Folders to scan for residues
+      - "C:\\Program Files"
+      - "C:\\Program Files (x86)"
+      - "%APPDATA%"
+      - "%LOCALAPPDATA%"
+    registry_hives:  # Registry paths to scan
+      - "HKLM\\SOFTWARE"
+      - "HKCU\\SOFTWARE"
+      - "HKLM\\SOFTWARE\\WOW6432Node"
+    keywords: []  # Patterns for residues (e.g., 'Adobe', 'OldAppVendor'); tie to de-bloat lists
+    whitelist: ['Microsoft', 'Windows']  # Protected keywords to skip
+    auto_remove: false  # If true, remove without prompt (dangerous; CLI override)
+    report_only: true   # Scan and report without removal (override with --remove)
+  driver_audit:
+    enabled: false
+    keywords:
+      - display
+      - video
+      - graphics
+      - network
+      - ethernet
+      - wifi
+      - adapter
+    suggestions:
+      NVIDIA: "https://www.nvidia.com/Download/index.aspx"
+      AMD: "https://www.amd.com/en/support"
+      INTEL: "https://www.intel.com/content/www/us/en/support/detect.html"
+      REALTEK: "https://www.realtek.com/en/downloads"
+      BROADCOM: "https://www.broadcom.com/support/download-search"
+      QUALCOMM: "https://www.qualcomm.com/support"
+      MICROSOFT: "Use Windows Update for built-in drivers."
+  startup_manager:
+    enabled: false
+    interactive: true  # Prompt user for each item (false for auto based on blacklist)
+    blacklist: []  # List of keywords/paths to auto-disable (e.g., 'CandyCrush', 'AdobeARM.exe'); used if non-interactive
+    whitelist: []  # Protected items (e.g., 'antivirus', 'Windows Defender')
+    include_services: true  # Scan/disable services
+    include_tasks: true     # Scan scheduled tasks
+    include_registry: true  # Scan HKLM/HKCU Run/RunOnce
+  benchmark_report: 
+    enabled: false
+    metrics: ['cpu', 'memory', 'disk', 'network']  # What to benchmark; subset via CLI
+    visualize: true  # Generate charts with matplotlib (false for text-only)
+    pre_post: true   # Run before/after (false for post-only)
+    report_path: "./logs/benchmark_report.txt"  # Override via CLI
+  scheduled_mode: 
+    enabled: false
+    frequency: "weekly"  # 'daily', 'weekly', 'monthly'; used for auto-setup
+    task_name: "KromScheduledClean"  # Name for the scheduled task
+    args: []  # Additional CLI args for scheduled runs (e.g., '--no-backup', '--offline')
+    interactive: true  # Prompt user (false for auto based on frequency)
+  hardware_health:
+    enabled: false
+  secure_wipe:
+    enabled: false
+    method: "dod"  # 'dod' (3-pass: 0s, 1s, random+verify), 'simple' (1-pass random), 'gutmann' (35-pass; slow!)
+    passes: 3  # For custom methods; ignored for predefined
+    wipe_paths: []  # List of paths to wipe (files/folders; ~ expands to home; required if enabled)
+    no_confirm: false  # Skip interactive prompt (dangerous; CLI override recommended)
+
+# Global settings (overrides via CLI take precedence)
+verbose: false
+dry_run: false
+no_backup: false
+safe_mode: false

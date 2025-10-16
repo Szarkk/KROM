@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# KROM-specific
+logs/
+dist/
+backups/
+.copilot/
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
