@@ -15,6 +15,9 @@ def setup_logging(verbose=False, dry_run=False, config=None):
     # Create logs dir if it doesn't exist
     log_dir.mkdir(parents=True, exist_ok=True)
     
+    # Resolve to absolute path based on app dir to prevent nesting (e.g., from dist/)
+    log_dir = log_dir.expanduser().resolve()
+    
     # Generate unique log filename with date/time
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     log_file = log_dir / f'krom_{timestamp}.log'
