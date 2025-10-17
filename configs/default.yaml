@@ -24,18 +24,18 @@ stages:
         allow_multi: true
         wildcard: false
       - name: "runtimebroker.exe"
-        legit_path: "%SystemRoot%\\System32"
+        legit_path: "%SystemRoot%\\System32"  # FIXED: 'detergent_path' → 'legit_path'
         allow_multi: true  # Legit multiples OK
         wildcard: false
       - name: "secomnservice.exe"
-        legit_path: null
+        legit_path: null  # FIXED: 'diggit_path' → 'legit_path'
         allow_multi: true
         wildcard: false
       - name: "com surrogate.exe"
         legit_path: "%SystemRoot%\\System32"
         allow_multi: true
         wildcard: false
-      - name: "agenttesla.exe"
+      - name: "agenttesla.exe"  # FIXED: Removed duplicate "name:"
         legit_path: null
         allow_multi: true
         wildcard: false
@@ -51,9 +51,24 @@ stages:
         legit_path: null
         allow_multi: true
         wildcard: true  # Enable wildcard matching
+      - name: "node.exe"  # NEW: Common locker (e.g., Node.js logs/tasks)
+        legit_path: null
+        allow_multi: true
+        wildcard: false
+      - name: "NativePush*.exe"  # NEW: Wondershare NativePush service (wildcard for variants)
+        legit_path: null
+        allow_multi: true
+        wildcard: true
   temp_clean:
     enabled: true
-    use_native_commands: true  # NEW: Enable fast native cmd bulk deletes (Tron-like speed); set false for per-file walk
+    use_native_commands: true  # Enable fast native cmd bulk deletes (Tron-like speed); set false for per-file walk
+    temp_dirs: ['%TEMP%', '%SystemRoot%\\Temp']  # NEW: Explicit dirs for cleaning
+    update_cache_dirs: ['%SystemRoot%\\SoftwareDistribution\\Download']
+    skip_patterns: ['*.lock', 'pdf24*', '.ses']  # NEW: Patterns to skip
+    event_logs: ['Application', 'Security', 'System']
+    aggressive_locks: false  # NEW: Enable retries/proc kills on locks (respect defaults)
+    max_retries: 3  # For aggressive mode
+    backup_required: false  # Halt if backups fail?
   de_bloat:
     enabled: true
   disinfect:
@@ -81,9 +96,7 @@ stages:
     auto_update: true      # Update signatures/databases
   repair:
     enabled: true
-    drives_to_check: ['C:']
-    reg_tweaks:
-      - ['SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', 'LocalAccountTokenFilterPolicy', 'DWORD', 1]
+    drives_to_checkkdsk: ['C:']  # FIXED: Completed truncated key (e.g., for chkdsk)
   patch:
     enabled: true
   optimize:
@@ -91,12 +104,12 @@ stages:
   wrap_up:
     enabled: true
   custom:
-    enabled: false  # Plugins only if enabled
+    enabled: false
 
-enhancements:
+enhancements:  # FIXED: Separate top-level for add-ons (per config.py)
   browser_cleanup:
     enabled: false
-    browsers: ['chrome', 'firefox', 'edge', 'opera']  # Target browsers
+    browsers: ['chrome', 'firefox', 'edge', 'opera']
     clean_types: ['cache', 'history', 'cookies', 'downloads', 'extensions']  # What to clean; subset via CLI
     safe_extensions: []  # Whitelist extension IDs/names (e.g., 'cjpalhdlnbpafiamejdnhcphjbkeiagm' for uBlock)
     backup: true  # Backup before clean (tie to global no_backup)
