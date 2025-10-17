@@ -1,17 +1,32 @@
-# Python
+# Python caches and bytecodes
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 
-# KROM-specific
+# KROM runtime/output
 logs/
-dist/
 backups/
+dist/  # Full dist ignored; use for exes only if sharing bundles
+krom_report.txt
+
+# AI/personal/docs
 .copilot/
 docs/
 
-# OS
+# PyInstaller builds
+build/
+*.spec  # Edit krom.spec manually if needed
+*.pkg
+*.toc
+*.exe
+*.msi
+base_library.zip
+warn-*.txt
+xref-*.html
+
+# OS/IDE
 .DS_Store
 Thumbs.db
+.vscode/
