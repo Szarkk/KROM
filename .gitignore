@@ -4,23 +4,24 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg-info/  # setuptools build artifacts
 
 # KROM runtime/output
 logs/
 backups/
-dist/  # Full dist ignored; use for exes only if sharing bundles
+temp/  # General temp files from config
+dist/  # PyInstaller outputs; ignore contents unless sharing bundles
 krom_report.txt
 
 # AI/personal/docs
 .copilot/
-docs/
 
 # PyInstaller builds
 build/
-*.spec  # Edit krom.spec manually if needed
+krom.spec  # Edit manually if needed; regenerate via build_exe.py
 *.pkg
 *.toc
-*.exe
+*.exe  # Built exes; ignore unless distributing
 *.msi
 base_library.zip
 warn-*.txt
@@ -30,3 +31,4 @@ xref-*.html
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/  # If using IntelliJ/PyCharm

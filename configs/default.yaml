@@ -94,6 +94,14 @@ stages:
     temp_dir: "./temp_av_downloads"  # Override general temp_dir if needed
     keep_installed: false  # Global default; per-tool overrides this
     auto_update: true      # Update signatures/databases
+    heuristic_cleanups:  # NEW: Array of targeted heuristics (e.g., EvilAI Node.js droppers); runs post-AV
+      - name: evilai
+        enabled: true
+        suspicious_tasks: []  # Optional regex patterns for PS query (e.g., ['HealthCheck{.*}']); code uses built-in GUID/Node.js match
+        payload_paths:  # EvilAI-specific paths to purge (expandvars in code)
+          - "%LOCALAPPDATA%\\545efde0-f252-4508-be85-dc46f5b73dde"
+          - "%TEMP%\\7cf46d71-a0a1-fa23-c524-b93e5c9b6cfa126eor.js"
+        kill_processes: ['node.exe']  # Processes to terminate if tied to payloads
   repair:
     enabled: true
     drives_to_checkkdsk: ['C:']  # FIXED: Completed truncated key (e.g., for chkdsk)
@@ -102,7 +110,7 @@ stages:
   optimize:
     enabled: true
   wrap_up:
-    enabled: true
+    metrics: ['disk_free', 'temp_size', 'startup_items']  # Subset via CLI --metrics
   custom:
     enabled: false
 

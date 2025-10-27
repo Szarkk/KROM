@@ -4,15 +4,13 @@ import subprocess
 import psutil  # For process management
 import platform
 from krom.utils.backup import create_backup  # Use centralized backup utility
+from krom.utils.system import is_admin  # Assume stubbed in utils/system.py
+from krom.utils.metrics import get_baseline_metrics  # New: For Wrap-Up reporting
 
 def run_prep(args, config, logger: logging.Logger):
     """
     Prep stage: Create backups, kill suspicious processes, and prepare for safe mode if needed.
     Based on KromFeaturesOverview.md and KromCLIOverview.md.
-    Args:
-        args: Parsed CLI arguments (Namespace from argparse)
-        config: Configuration dict from default.yaml
-        logger: Logging instance for console/file output
     """
     if platform.system() != 'Windows':
         logger.warning("Prep stage is Windows-only; skipping non-applicable parts.")
@@ -21,7 +19,12 @@ def run_prep(args, config, logger: logging.Logger):
     dry_run = args.dry_run
     no_backup = args.no_backup
     safe_mode = args.safe_mode
+    offline = getattr(args, 'offline', False)  # Respect --offline
     interactive = getattr(args, 'interactive', False)  # For confirmations
+
+    if not is_admin():
+        logger.warning("Prep stage requires admin privileges; some features may fail.")
+        return  # Or proceed with warnings
 
     logger.info("Starting Prep stage...")
 
@@ -134,5 +137,10 @@ def run_prep(args, config, logger: logging.Logger):
                 logger.error(f"Failed to set safe mode: {e}")
     else:
         logger.info("Safe mode prep skipped.")
+
+    # Capture baselines for Wrap-Up before/after reporting
+    if not dry_run:
+        args.baseline_metrics = get_baseline_metrics(config, logger)
+        logger.info("Baselines captured for before/after reporting.")
 
     logger.info("Prep stage completed.")

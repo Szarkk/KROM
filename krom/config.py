@@ -113,7 +113,21 @@ def get_default_config() -> Dict:
             'temp_dir': "./temp"
         },
         'stages': {
-            'prep': {'enabled': True},
+            'prep': {
+                'enabled': True,
+                'suspicious_processes': [  # Default list of known malware processes (case-insensitive, supports wildcards)
+                    "winlogon.exe",  # Often mimicked by trojans (check for multiples or anomalies)
+                    "jusched.exe",  # Associated with Troj/Banker variants
+                    "cdproxyserv.exe",  # Sony rootkit remnant or similar
+                    "runtimebroker.exe",  # Malware can spawn multiples; legit but suspicious if excessive
+                    "secomnservice.exe",  # Potential adware/malware service
+                    "com surrogate.exe",  # Can hide DLL-based malware
+                    "agenttesla.exe",  # RAT variant process
+                    "qakbot.exe",  # Banking trojan
+                    "trickbot.exe",  # Modular malware
+                    "ransomware_helper.*"  # Wildcard for common ransomware loaders
+                ]
+            },
             'temp_clean': {'enabled': True},
             'de_bloat': {'enabled': True},
             'disinfect': {
