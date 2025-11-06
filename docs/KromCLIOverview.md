@@ -16,6 +16,7 @@ python main.py [flags] or python -m krom.main to start the interactive wizard
 - Runs all enabled core stages in sequence by default if flags provided; triggers interactive wizard if no flags.
 - Example: `python main.py --verbose` (runs defaults with detailed output).
 - For bundled exe: `krom.exe [flags]`.
+- AV tools (e.g., in Disinfect) are temporary by default: Installed for the stage, then uninstalled to avoid bloat. Use `--keep-av` to retain them.
 
 ### Interactive Wizard
 When running without flags (or with only globals like `--config`), Krom launches an interactive wizard for guided setup. This prompts step-by-step through global options, stage/enhancement selection, and custom parameters before running. Useful for casual users.
@@ -23,7 +24,7 @@ When running without flags (or with only globals like `--config`), Krom launches
 - **Navigation Commands (type at any prompt):**
   - `help`: Display wizard instructions and available commands.
   - `back`: Return to the previous question (redo your answer; limited to one step back for simplicity).
-  - `end`: Quit the wizard and exit Krom without running.
+  - `end` : Quit the wizard and exit Krom without running.
   - `start`: Skip remaining prompts and begin the run with current selections (defaults for unanswered questions).
 - Press Enter at a prompt to use the default (shown in parentheses, e.g., `(default: n)`).
 - If you misanswer, use `back` to correct without restarting. The wizard saves progress until you exit or start.
@@ -57,10 +58,11 @@ Control core stages. By default, all are enabled. Use `--no-<stage>` to disable.
 | `--temp-clean` / `--no-temp-clean` | Temp Clean | Enable/disable temp file wiping. Add `--temp-dirs <dir1,dir2>` for custom paths. |
 | `--de-bloat` / `--no-de-bloat` | De-Bloat | Enable/disable bloatware removal. Add `--bloat-list <file>` for custom app list. |
 | `--disinfect` / `--no-disinfect` | Disinfect | Enable/disable malware scans. Add `--scan-tool <tool>` (e.g., clamav). |
+| `--keep-av` | Disinfect | Retain AV tools after scans (default: false; overrides config to uninstall for temp use). |
 | `--repair` / `--no-repair` | Repair | Enable/disable system fixes. |
 | `--patch` / `--no-patch` | Patch | Enable/disable updates. Add `--offline-patches <dir>` for bundled patches. |
 | `--optimize` / `--no-optimize` | Optimize | Enable/disable defrag/pagefile tweaks. |
-| `--wrap-up` / `--no-wrap-up` | Wrap-Up | Enable/disable logs/reports. Add `--email-report <address>` for sending. |
+| `--wrap-up` / `--no-wrap-up` | Wrap-Up | Enable/disable logs/reports. |
 | `--custom` / `--no-custom` | Custom | Enable/disable user plugins. Add `--plugins-dir <path>` (default: `./plugins`). |
 
 Example: `python main.py --no-de-bloat --custom` (skips de-bloat, runs custom scripts).
@@ -70,7 +72,6 @@ Enhancements are disabled by default. Use `--<enhancement>` to enable.
 
 | Flag | Associated Enhancement/Stage | Description |
 |------|------------------------------|-------------|
-| `--cloud-backup` | Cloud Backup Integration (Prep) | Enable cloud backups. Requires `--cloud-provider <dropbox/google>` and `--auth-token <token>`. |
 | `--browser-cleanup` | Browser Cleanup (Temp Clean) | Enable browser-specific cleaning. Add `--browsers <chrome,firefox>` to target. |
 | `--privacy-scrub` | Privacy Scrub (After De-Bloat) | Enable privacy tweaks. Add `--hosts-file <path>` for custom blocks. |
 | `--uninstall-residue` | Uninstall Residue Remover (After De-Bloat) | Enable residue hunting. |
@@ -86,15 +87,15 @@ Example: `python main.py --privacy-scrub --benchmark-report` (runs core stages +
 ## Advanced/Standalone Modes
 For running specific features independently (useful for testing or targeted use):
 - `--standalone <stage/enhancement>`: Run only that stage/enhancement (e.g., `--standalone hardware-health`).
-- This skips the full sequence but still applies global flags. **Note:** Not all stages/enhancements work fully standalone—prerequisites (e.g., Prep for Temp Clean to unlock files) may cause reduced effectiveness or warnings (e.g., "Recommend Prep before Temp Clean"). Combine with prior stages (e.g., `--standalone temp_clean --prep`) or enable backups explicitly for safety.
+- This skips the full sequence but still applies global flags.
 
 ## Config File Integration
 - If no flags are provided for a stage/enhancement, fall back to the config file. Users can edit `./configs/default.yaml` for persistent settings, or pass a custom one via `--config`.
-- For per-tool keep options, edit config YAML.
+- For per-tool keep options, edit config YAML
 
 ## Implementation Notes
 - In `main.py`, use `argparse.ArgumentParser()` to define these flags.
 - Group flags with `add_argument_group()` for better `--help` output (e.g., "Global", "Stages", "Enhancements").
 - Parse args, merge with config (using `pyyaml`), then dispatch to stages.
 - For flags with values, use `type=str` or `nargs='+'` as needed.
-- Error handling: Validate conflicts and prerequisites (e.g., warn if `--standalone temp_clean` without `--prep`; implement in main.py dispatcher).
+- Error handling: Validate conflicts (e.g., can't `--no-prep` with enhancements needing backups).

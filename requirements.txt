@@ -1,0 +1,6 @@
+psutil
+pyyaml
+tqdm
+speedtest-cli
+matplotlib
+yara-python

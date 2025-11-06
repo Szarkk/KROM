@@ -75,33 +75,39 @@ stages:
     enabled: true
     av_tools:
       - name: ClamAV
-        download_url: "https://www.clamav.net/downloads/production/clamav-1.4.3.win.x64.exe"  # Latest stable LTS as of Sept 2025
+        download_url: "https://www.clamav.net/downloads/production/clamav-1.4.3.win.x64.exe"
         install_cmd: "--mode unattended --install-location C:\\ClamAV"
-        update_cmd: "C:\\ClamAV\\freshclam.exe"
-        scan_cmd: "C:\\ClamAV\\clamscan.exe -r C:\\ --bell -i --remove"
+        update_cmd_list: ["C:\\ClamAV\\freshclam.exe"]  # NEW: List format
+        scan_cmd_list: ["C:\\ClamAV\\clamscan.exe", "-r", "%SCAN_PATH%", "--bell", "-i", "--remove"]  # NEW: List with placeholder
         uninstall_cmd: "C:\\ClamAV\\uninstall.exe /S"
         detect_cmd: "dir C:\\ClamAV /b >nul 2>&1 && echo installed"
-        keep_installed: false  # Per-tool: Skip uninstall if pre-installed
+        keep_installed: false
       - name: Malwarebytes
+        type: protector
         download_url: "https://downloads.malwarebytes.com/file/mwb-download/mwb-free-latest.exe"
         install_cmd: "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES"
-        update_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe" /update'
-        scan_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe" /scan -full -terminate'
+        update_cmd_list: ["\"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe\"", "/update"]  # NEW: List format
+        scan_cmd: null
+        realtime_enable_cmd_list: ["sc", "start", "MBAMService"]  # NEW: List for consistency
         uninstall_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\unins000.exe" /VERYSILENT /NORESTART'
         detect_cmd: "wmic product get name | findstr Malwarebytes"
-        keep_installed: false  # Per-tool: Skip uninstall if pre-installed
+        keep_installed: false
+        gui_fallback: false
     max_concurrent: 1
     temp_dir: "./temp_av_downloads"  # Override general temp_dir if needed
     keep_installed: false  # Global default; per-tool overrides this
     auto_update: true      # Update signatures/databases
-    heuristic_cleanups:  # NEW: Array of targeted heuristics (e.g., EvilAI Node.js droppers); runs post-AV
-      - name: evilai
-        enabled: true
-        suspicious_tasks: []  # Optional regex patterns for PS query (e.g., ['HealthCheck{.*}']); code uses built-in GUID/Node.js match
-        payload_paths:  # EvilAI-specific paths to purge (expandvars in code)
-          - "%LOCALAPPDATA%\\545efde0-f252-4508-be85-dc46f5b73dde"
-          - "%TEMP%\\7cf46d71-a0a1-fa23-c524-b93e5c9b6cfa126eor.js"
-        kill_processes: ['node.exe']  # Processes to terminate if tied to payloads
+    scan_paths: ['%SystemRoot%', '%TEMP%', '%LOCALAPPDATA%']  # NEW: Explicit scan paths (expandable)
+    rules_path: "./data/pup_rules.yar"  # NEW: YARA rules file (create stub if missing)
+    known_bad_hashes:  # NEW: SHA256 IOCs for heuristic fallback (add real ones from threat intel)
+      - "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"  # SHA256 of empty file (placeholder)
+      - "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"  # SHA256 of EICAR test file
+    evilai:  # NEW: Config for EvilAI-specific cleanup (disabled by default; moved from heuristic_cleanups)
+      enabled: false
+      payload_paths:  # Common drop locations (expandvars in code)
+        - "%LOCALAPPDATA%\\545efde0-f252-4508-be85-dc46f5b73dde"
+        - "%TEMP%\\7cf46d71-a0a1-fa23-c524-b93e5c9b6cfa126eor.js"
+      kill_processes: ['node.exe']  # Processes to terminate if tied to payloads
   repair:
     enabled: true
     drives_to_checkkdsk: ['C:']  # FIXED: Completed truncated key (e.g., for chkdsk)
