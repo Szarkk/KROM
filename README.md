@@ -18,10 +18,11 @@ So I’m graduating it.
 - Clear folder structure (stages/, enhancements/, utils/) that teaches clean project layout
 
 ### Perfect for
-- Students learning Python on Windows  
+- Students learning Python on Windows
+- Students who need a concrete, real-world Python project for their portfolio that isn’t another TODO app
 - People studying for CompTIA A+/Security+ who want hands-on scripting experience  
 - Hobbyists who want to fork and add their own stages  
-- Anyone who ever googled “how do I safely delete temp files with Python?”
+- Anyone who believes learning by reading + breaking + fixing real code beats yet another YouTube tutorial
 
 ### How to use it as a learning project
 1. Fork → clone → run `python main.py` (or the built .exe)  
