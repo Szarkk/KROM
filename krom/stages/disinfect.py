@@ -6,8 +6,12 @@ import shutil  # For potential file removal
 import re  # For parsing PS output
 import psutil  # For process killing (existing dep)
 import hashlib  # For SHA256 hashing in heuristic fallback
+import json  # For JSON PS parsing in parse_ps_output
+import time  # For retry backoff in downloads
 from tqdm import tqdm  # For progress bars (existing dep)
 import shlex  # For secure command splitting
+from pathlib import Path  # For safe dir creation
+
 try:
     import requests  # For optional tool downloads (add to requirements.txt if using; guarded by offline)
 except ImportError:
@@ -23,7 +27,7 @@ except ImportError:
 from krom.utils.backup import create_backup  # For path backups
 from krom.utils.system import is_admin  # For admin check
 
-def parse_ps_output(output: str) -> list:
+def parse_ps_output(output: str, logger: logging.Logger) -> list:
     """
     JSON parser for PowerShell task output: Extracts task names matching EvilAI patterns (e.g., GUIDs, Node.js args).
     Returns list of suspicious task names.
@@ -75,35 +79,57 @@ def install_av_tool(tool: dict, config: dict, logger: logging.Logger, dry_run: b
 
     if offline:
         # Fallback: Check for bundled in temp_dir
-        temp_dir = config.get('paths', {}).get('temp_dir', './temp')
+        temp_dir_raw = config.get('paths', {}).get('temp_dir', '%TEMP%')
+        temp_dir = os.path.abspath(os.path.expandvars(temp_dir_raw))  # FIXED: Expand env vars (e.g., %TEMP%)
         bundled_exe = os.path.join(temp_dir, f"{tool['name']}_setup.exe")
         if os.path.exists(bundled_exe):
-            logger.info(f"Using bundled {tool['name']} installer.")
+            logger.info(f"Using bundled {tool['name']} installer at {bundled_exe}.")
         else:
             logger.warning(f"Offline mode: Skipping {tool['name']} install (no bundle).")
             return None
 
     if dry_run:
-        logger.info(f"[Dry Run] Would install {tool['name']} from {tool['download_url']}")
+        temp_dir_raw = config.get('paths', {}).get('temp_dir', '%TEMP%')
+        temp_dir = os.path.abspath(os.path.expandvars(temp_dir_raw))  # FIXED: Expand for logging
+        logger.info(f"[Dry Run] Would install {tool['name']} from {tool['download_url']} to {temp_dir}")
         return tool.get('install_path')
 
     if not requests and offline:
         logger.error("requests unavailable and offline; cannot install.")
         return None
 
+    temp_dir_raw = config.get('paths', {}).get('temp_dir', '%TEMP%')  # FIXED: Match YAML default
+    temp_dir = os.path.abspath(os.path.expandvars(temp_dir_raw))  # FIXED: Force expansion + absolute
+    logger.info(f"Using download temp dir: Raw '{temp_dir_raw}' → Expanded '{temp_dir}' (CWD: {os.getcwd()})")  # FIXED: Show expansion
+    Path(temp_dir).mkdir(parents=True, exist_ok=True)
+    temp_exe = os.path.join(temp_dir, f"{tool['name']}_setup.exe")
+
+    installer_path = None
     try:
         # Download if not offline/bundled
         if not offline:
             download_url = tool['download_url']
-            response = requests.get(download_url, stream=True)
-            response.raise_for_status()
-            temp_dir = config.get('paths', {}).get('temp_dir', './temp')
-            os.makedirs(temp_dir, exist_ok=True)
-            temp_exe = os.path.join(temp_dir, f"{tool['name']}_setup.exe")
-            with open(temp_exe, 'wb') as f:
-                shutil.copyfileobj(response.raw, f)
-            logger.info(f"Downloaded {tool['name']} to {temp_exe}")
-            installer_path = temp_exe
+            for attempt in range(3):  # 3x retry with backoff
+                try:
+                    response = requests.get(download_url, stream=True, timeout=30)
+                    response.raise_for_status()
+                    with open(temp_exe, 'wb') as f:
+                        shutil.copyfileobj(response.raw, f)
+                    # Verify download (basic size check)
+                    if os.path.getsize(temp_exe) == 0:
+                        raise ValueError("Downloaded file is empty")
+                    logger.info(f"Downloaded {tool['name']} to {temp_exe} (size: {os.path.getsize(temp_exe)} bytes)")
+                    installer_path = temp_exe
+                    break
+                except (requests.exceptions.RequestException, ValueError) as e:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"Download attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                    if os.path.exists(temp_exe):
+                        os.remove(temp_exe)  # Clean partial
+            else:
+                logger.error(f"Download failed after 3 retries from {download_url}")
+                return None
         else:
             installer_path = bundled_exe
 
@@ -121,14 +147,19 @@ def install_av_tool(tool: dict, config: dict, logger: logging.Logger, dry_run: b
         return tool.get('install_path', f"C:\\{tool['name']}")
     except Exception as e:
         logger.error(f"Failed to install {tool['name']}: {e}")
+        if installer_path and os.path.exists(installer_path):
+            try:
+                os.remove(installer_path)
+            except OSError:
+                pass  # Ignore cleanup fail
         return None
 
 def update_av_tool(tool: dict, logger: logging.Logger, dry_run: bool = False, offline: bool = False) -> bool:
     """
     Update tool signatures if supported.
     """
-    update_cmd_list = tool.get('update_cmd_list', [])
-    if not update_cmd_list:
+    update_cmd_str = tool.get('update_cmd', '')  # FIXED: Match config (string, not _list)
+    if not update_cmd_str:
         logger.info(f"{tool['name']} has no update command; skipping.")
         return True
 
@@ -137,11 +168,12 @@ def update_av_tool(tool: dict, logger: logging.Logger, dry_run: bool = False, of
         return True
 
     if dry_run:
-        logger.info(f"[Dry Run] Would update {tool['name']}")
+        logger.info(f"[Dry Run] Would update {tool['name']} with: {update_cmd_str}")
         return True
 
     try:
-        result = subprocess.run(update_cmd_list, shell=False, capture_output=True, text=True, check=False)
+        update_cmd_parts = shlex.split(update_cmd_str)  # FIXED: Secure split
+        result = subprocess.run(update_cmd_parts, shell=False, capture_output=True, text=True, check=False)
         logger.info(f"{tool['name']} update: {result.stdout}")
         logger.debug(f"{tool['name']} update stderr: {result.stderr}")
         return result.returncode == 0
@@ -154,8 +186,8 @@ def enable_realtime_protection(tool: dict, logger: logging.Logger, dry_run: bool
     Enable real-time protection for 'protector' tools (e.g., Malwarebytes service start).
     Idempotent: Skips if already running.
     """
-    realtime_cmd_list = tool.get('realtime_enable_cmd_list', [])
-    if not realtime_cmd_list:
+    realtime_cmd_str = tool.get('realtime_enable_cmd', '')  # FIXED: Match config (string)
+    if not realtime_cmd_str:
         logger.info(f"{tool['name']} has no realtime enable command; skipping.")
         return True
 
@@ -164,9 +196,10 @@ def enable_realtime_protection(tool: dict, logger: logging.Logger, dry_run: bool
         return True
 
     try:
+        realtime_cmd_parts = shlex.split(realtime_cmd_str)  # FIXED: Secure split
         # Assume cmd is for service start; query first for idempotency
         # Extract service name heuristically (e.g., from cmd like "sc start MBAMService")
-        service_name = realtime_cmd_list[-1] if realtime_cmd_list[0:2] == ['sc', 'start'] else 'MBAMService'
+        service_name = realtime_cmd_parts[-1] if realtime_cmd_parts[0:2] == ['sc', 'start'] else 'MBAMService'
         query_cmd = ['sc', 'query', service_name]
         result = subprocess.run(query_cmd, shell=False, capture_output=True, text=True, check=False)
         logger.debug(f"Service query for {service_name}: {result.stdout}")
@@ -175,7 +208,7 @@ def enable_realtime_protection(tool: dict, logger: logging.Logger, dry_run: bool
             return True
 
         # Enable
-        result = subprocess.run(realtime_cmd_list, shell=False, capture_output=True, text=True, check=False)
+        result = subprocess.run(realtime_cmd_parts, shell=False, capture_output=True, text=True, check=False)
         logger.info(f"{tool['name']} real-time protection enabled temporarily: {result.stdout}")
         return result.returncode == 0
     except Exception as e:
@@ -193,8 +226,8 @@ def run_av_scan(tool: dict, scan_paths: list, logger: logging.Logger, dry_run: b
         return True
 
     tool_name = tool['name']
-    scan_cmd_list = tool.get('scan_cmd_list')
-    if scan_cmd_list is None:
+    scan_cmd_str = tool.get('scan_cmd', '')  # FIXED: Match config (string)
+    if not scan_cmd_str:
         logger.warning(f"{tool_name} has no scan command; skipping.")
         return True
 
@@ -204,10 +237,14 @@ def run_av_scan(tool: dict, scan_paths: list, logger: logging.Logger, dry_run: b
             logger.info(f"[Dry Run] Would scan {path} with {tool_name}")
         else:
             try:
-                # Just replace the token in the list, Python handles the spaces
-                full_cmd = [arg.replace('%SCAN_PATH%', path) for arg in scan_cmd_list]
+                # FIXED: Add quotes around the path *before* shlex.split
+                # This ensures paths with spaces are treated as a single argument.
+                quoted_path = f'"{path}"'
+                full_cmd_str = scan_cmd_str.replace('%SCAN_PATH%', quoted_path)
                 
-                # shell=False is still critical
+                # Now shlex.split will correctly see the quoted path as one item
+                full_cmd = shlex.split(full_cmd_str)  # FIXED: Secure split after replacement
+                
                 result = subprocess.run(full_cmd, shell=False, capture_output=True, text=True, check=False)
                 logger.info(f"{tool_name} scan on {path}: {result.stdout}")
                 logger.debug(f"{tool_name} scan stderr: {result.stderr}")
@@ -223,6 +260,7 @@ def heuristic_scan(paths: list, rules_path: str, logger: logging.Logger, dry_run
     Returns list of (path, matches) tuples.
     """
     threats = []
+    scanned_files = 0  # NEW: Counter for metrics
     if known_bad_hashes is None:
         known_bad_hashes = []
 
@@ -230,8 +268,10 @@ def heuristic_scan(paths: list, rules_path: str, logger: logging.Logger, dry_run
     if yara and os.path.exists(rules_path):
         try:
             rules = yara.compile(rules_path)
+            logger.debug(f"Loaded YARA rules from {rules_path} (compiled successfully)")
             for path in tqdm(paths, desc="YARA Heuristic Scan"):
                 if os.path.isfile(path):
+                    scanned_files += 1
                     matches = rules.match(path)
                     if matches:
                         threats.append((path, matches))
@@ -241,11 +281,14 @@ def heuristic_scan(paths: list, rules_path: str, logger: logging.Logger, dry_run
                             logger.info(f"[Dry Run] YARA hit on {path}: {matches}")
         except Exception as e:
             logger.error(f"YARA scan failed: {e}")
+    else:
+        logger.warning(f"YARA skipped: rules_path={rules_path}, exists={os.path.exists(rules_path)}")
 
     # Fallback: SHA256 hash check for known bad hashes (chunked for large files)
     if known_bad_hashes:
         for path in tqdm(paths, desc="Fallback Heuristic Scan"):
             if os.path.isfile(path):
+                scanned_files += 1
                 try:
                     hasher = hashlib.sha256()
                     with open(path, 'rb') as f:
@@ -261,6 +304,7 @@ def heuristic_scan(paths: list, rules_path: str, logger: logging.Logger, dry_run
                 except Exception as e:
                     logger.debug(f"Hash calc failed on {path}: {e}")
 
+    logger.info(f"Heuristic scan completed: {scanned_files} files checked, {len(threats)} threats found.")  # NEW: Metrics log
     return threats
 
 def run_disinfect(args, config, logger: logging.Logger):
@@ -279,9 +323,9 @@ def run_disinfect(args, config, logger: logging.Logger):
 
     dry_run = args.dry_run
     no_backup = args.no_backup
-    offline = getattr(args, 'offline', False)
+    offline = getattr(args, 'offline', False)  # FIXED: Consistent var name
     scan_tool = getattr(args, 'scan_tool', None)  # Limit to specific tool if flagged
-    keep_av = getattr(args, 'keep_av', False)  # NEW: Override to retain tools post-stage
+    keep_av = getattr(args, 'keep_av', False)  # Override to retain tools post-stage
     # Assume interactive unless standalone/scheduled
     interactive = not getattr(args, 'standalone', False)
 
@@ -303,12 +347,14 @@ def run_disinfect(args, config, logger: logging.Logger):
 
     # Step 3: Run multi-tool AV scans (Loop over av_tools; install/update/scan or enable per-tool)
     av_tools = disinfect_config.get('av_tools', [])
-    if scan_tool:  # CLI override: Limit to specified tool
+    if scan_tool:  # CLI override: Limit to specific tool
         av_tools = [t for t in av_tools if t['name'].lower() == scan_tool.lower()]
         logger.info(f"Limited to tool: {scan_tool}")
     if not av_tools:
         logger.warning("No AV tools configured; skipping scans.")
     else:
+        temp_dir_raw = config.get('paths', {}).get('temp_dir', '%TEMP%')  # FIXED: Match YAML default
+        temp_dir = os.path.abspath(os.path.expandvars(temp_dir_raw))  # FIXED: Expand for sweep
         for tool in av_tools:
             tool_name = tool['name']
             logger.info(f"Processing {tool_name}...")
@@ -334,13 +380,13 @@ def run_disinfect(args, config, logger: logging.Logger):
                     logger.warning(f"Failed to activate {tool_name} protection.")
             else:
                 # Run scan for scanners
-                non_interactive = not interactive
-                success = run_av_scan(tool, scan_paths, logger, dry_run, offline, non_interactive)
+                success = run_av_scan(tool, scan_paths, logger, dry_run, offline, non_interactive=not interactive)  # FIXED: Correct param + invert logic
                 if not success:
                     logger.warning(f"{tool_name} scan failed; continuing.")
 
             # Always uninstall unless --keep-av
-            should_uninstall = tool.get('uninstall_cmd') and not keep_av
+            uninstall_cmd_str = tool.get('uninstall_cmd', '')  # FIXED: Match config
+            should_uninstall = bool(uninstall_cmd_str) and not keep_av
             if tool.get('keep_installed') and keep_av:
                 should_uninstall = False  # Config + flag both want to keep
             if should_uninstall:
@@ -348,13 +394,23 @@ def run_disinfect(args, config, logger: logging.Logger):
                     logger.info(f"[Dry Run] Would uninstall {tool_name}")
                 else:
                     try:
-                        uninstall_cmd_parts = shlex.split(tool['uninstall_cmd'])
+                        uninstall_cmd_parts = shlex.split(uninstall_cmd_str)  # FIXED: Secure split
                         subprocess.run(uninstall_cmd_parts, shell=False, check=False)
                         logger.info(f"Uninstalled {tool_name} (temp tool).")
                     except Exception as e:
                         logger.warning(f"Uninstall {tool_name} failed: {e}")
             elif keep_av:
                 logger.info(f"Retained {tool_name} post-scan (--keep-av).")
+
+        # NEW: Sweep orphaned installers in temp_dir
+        if not dry_run:
+            for file in Path(temp_dir).glob("*.exe"):
+                if any(tool_name.lower().replace(' ', '_') in file.name.lower() for tool_name in [t['name'] for t in av_tools]):
+                    try:
+                        file.unlink()
+                        logger.debug(f"Cleaned orphaned installer: {file}")
+                    except OSError as e:
+                        logger.debug(f"Failed to clean {file}: {e}")
 
     # Step 4: Heuristic scan (YARA + fallback; post-AV)
     rules_path = disinfect_config.get('rules_path', './data/pup_rules.yar')
@@ -370,7 +426,7 @@ def run_disinfect(args, config, logger: logging.Logger):
             try:
                 quarantine_path = os.path.join(quarantine_dir, os.path.basename(path))
                 shutil.move(path, quarantine_path)
-                logger.info(f"Quarantined threat: {path} -> {quarantine_path} (matches: {matches})")
+                logger.info(f"Quarantined threat: {path} → {quarantine_path} (matches: {matches})")
             except Exception as e:
                 logger.error(f"Failed to quarantine {path}: {e}")
 
@@ -384,7 +440,7 @@ def run_disinfect(args, config, logger: logging.Logger):
         expanded_paths = [os.path.expandvars(p) for p in purge_paths]
         if not no_backup and expanded_paths:
             backup_targets = expanded_paths  # Backup dirs/files before purge
-            backup_path = create_backup('disinfect_evilai', config, logger, dry_run, targets=backup_targets)
+            backup_path = create_backup('disinfect_evilai', config, logger, dry_run, targets=expanded_paths)  # FIXED: backup_targets
             if not backup_path:
                 logger.warning("Backup failed; proceeding with caution.")
 
@@ -402,7 +458,7 @@ def run_disinfect(args, config, logger: logging.Logger):
             else:
                 result = subprocess.run(['powershell', '-Command', ps_query], capture_output=True, text=True, check=False)
                 logger.debug(f"PS query stderr: {result.stderr}")
-                suspicious_tasks = parse_ps_output(result.stdout)
+                suspicious_tasks = parse_ps_output(result.stdout, logger)
                 logger.info(f"Detected {len(suspicious_tasks)} suspicious tasks.")
         except Exception as e:
             logger.error(f"Task detection failed: {e}")

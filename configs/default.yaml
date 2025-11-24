@@ -3,9 +3,9 @@
 # All paths are relative to project root unless absolute.
 
 paths:
-  backups: "./backups"  # Directory for stage backups (e.g., registry exports)
-  logs: "./logs"       # Runtime logs; auto-created if missing
-  temp_dir: "./temp"   # General temp files (shared across stages)
+  backups: "./backups"
+  logs: "./logs"
+  temp_dir: "%TEMP%"  # FIXED: Use system temp for downloads (expands to user temp dir)
 
 stages:
   prep:
@@ -75,20 +75,22 @@ stages:
     enabled: true
     av_tools:
       - name: ClamAV
-        download_url: "https://www.clamav.net/downloads/production/clamav-1.4.3.win.x64.exe"
-        install_cmd: "--mode unattended --install-location C:\\ClamAV"
-        update_cmd_list: ["C:\\ClamAV\\freshclam.exe"]  # NEW: List format
-        scan_cmd_list: ["C:\\ClamAV\\clamscan.exe", "-r", "%SCAN_PATH%", "--bell", "-i", "--remove"]  # NEW: List with placeholder
-        uninstall_cmd: "C:\\ClamAV\\uninstall.exe /S"
-        detect_cmd: "dir C:\\ClamAV /b >nul 2>&1 && echo installed"
+        download_url: "https://github.com/Cisco-Talos/clamav/releases/download/clamav-1.5.0/clamav-1.5.0.win.x64.exe"  # FIXED: Reliable GitHub mirror (exe, Nov 2025 stable)
+        install_cmd: "/S"  # FIXED: Simple silent for exe (no MSI flags needed)
+        update_cmd_list: ["C:\\Program Files\\ClamAV\\freshclam.exe"]  # Path for exe install
+        scan_cmd_list: ["C:\\Program Files\\ClamAV\\clamscan.exe", "-r", "%SCAN_PATH%", "--bell", "-i", "--remove"]
+        uninstall_cmd: "C:\\Program Files\\ClamAV\\uninstall.exe /S"
+        detect_cmd: "dir \"C:\\Program Files\\ClamAV\" /b >nul 2>&1 && echo installed"
+        install_path: "C:\\Program Files\\ClamAV"  # FIXED: Match exe default
         keep_installed: false
+
       - name: Malwarebytes
         type: protector
-        download_url: "https://downloads.malwarebytes.com/file/mwb-download/mwb-free-latest.exe"
+        download_url: "https://data-cdn.mbamupdates.com/web/mb4-setup-consumer/MBSetup.exe"  # Updated to current consumer exe (as of Nov 2025)
         install_cmd: "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES"
-        update_cmd_list: ["\"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe\"", "/update"]  # NEW: List format
+        update_cmd_list: ["\"C:\\Program Files\\Malwarebytes\\Anti-Malware\\mbam.exe\"", "/update"]
         scan_cmd: null
-        realtime_enable_cmd_list: ["sc", "start", "MBAMService"]  # NEW: List for consistency
+        realtime_enable_cmd_list: ["sc", "start", "MBAMService"]
         uninstall_cmd: '"C:\\Program Files\\Malwarebytes\\Anti-Malware\\unins000.exe" /VERYSILENT /NORESTART'
         detect_cmd: "wmic product get name | findstr Malwarebytes"
         keep_installed: false
