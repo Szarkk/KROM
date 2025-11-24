@@ -3,11 +3,9 @@
 **A safe, modular, fully-commented Python learning project for anyone who wants to understand Windows automation.**
 
 KROM started as my personal “TronScript-inspired” deep cleaner.  
-After months of building stages, backups, a CLI wizard, and a ton of safety features, I realized something:
+After weeks of building a full-featured Windows deep-cleaning tool (backups, dry-run, wizard, stages, the works), I’ve decided to turn it into exactly what it’s best at:
 
-This code is now way more useful as a **teaching tool** than as yet another cleanup script.
-
-So I’m graduating it.
+An open, over-commented, super-safe Python learning project for anyone getting into Windows automation.
 
 ### Why this exists now
 - Every stage is deliberately over-commented and split into tiny, readable functions  
@@ -25,16 +23,17 @@ So I’m graduating it.
 - Anyone who believes learning by reading + breaking + fixing real code beats yet another YouTube tutorial
 
 ### How to use it as a learning project
-1. Fork → clone → run `python main.py` (or the built .exe)  
+1. Fork → clone → run `python -m krom.main` on PowerShell or Terminal (Admin)
 2. Read the comments in any stage (start with `prep.py` or `temp_clean.py`)  
-3. Try the beginner challenges in CONTRIBUTING.md  
-4. Break something on purpose → learn how the backup/restore system saves you  
-5. Add your own stage or enhancement and open a PR (I’ll merge good ones!)
+3. Break something on purpose (on an old and unused computer, not your main) → learn how the backup/restore system saves you  
+4. Add your own stage or enhancement
 
-KROM is now officially a **baseline / starter-kit**.  
-I’m stepping away from active development, but the repo stays public forever for anyone who wants to learn, experiment, or teach with it.
+KROM is a **baseline / starter-kit**.  
+I'd still be slowly updating this, stepping away from active developmen, but the repo stays public forever for anyone who wants to learn, experiment, or teach with it. Or even make it better.
 
 Feel free to use it in your portfolio, your classroom, or just to mess around safely.
 
 – Szarkk  
 (November 2025)
+
+Note: the build .exe is outdated.
